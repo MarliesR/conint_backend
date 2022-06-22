@@ -1,0 +1,84 @@
+
+#image: mcr.microsoft.com/dotnet/sdk:5.0
+
+stages:          
+  - lint
+  - test
+  - build
+  - deploy
+
+    
+linting:
+  # tags assign the correct runner when using multiple runners 
+  tags:
+    - conint
+  stage: lint
+  # pipeline fails when linting stage detects problems 
+  allow_failure: false
+  script:
+    - echo "Starting linting stage.."
+    # update the dotnet-format tool
+    - dotnet tool update -g dotnet-format
+    # change to location of the application solution
+    - cd conint.server
+    # because of difficulties with gloabl installation, start dotnet format with this command
+    # --check flag doesnt change formatting problems, pipeline fails when formating issues have been found
+    - ~/.dotnet/tools/dotnet-format --check conint.server.sln 
+
+
+unit-test-job:   
+  tags:
+    - conint
+  stage: test    
+  allow_failure: false
+  script:
+    - echo "Running unit tests... "
+    # change to location of the unit tests
+    - cd conint.tests
+    - dotnet add package coverlet.msbuild
+    # treshold specifies the minimum % of code coverage to not fail the unit test stage
+    # tresholdType can be method, line or branch coverage 
+    # stage fails when test fails or when under 80% of code coverage
+    - dotnet test /p:CollectCoverage=true /p:Threshold=80 /p:ThresholdType=method 
+
+
+build-job:       
+  tags:
+    - conint
+  stage: build
+  allow_failure: false
+  script:
+    - echo "Compiling the code..."
+    - cd conint.server
+    # stage fails when building fails
+    - dotnet build  
+
+
+deploy-job:     
+  tags:
+    - conint
+  stage: deploy 
+  allow_failure: false
+  image: docker:20-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375 
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+  services:
+    - name: docker:20-dind
+      alias: docker
+      command: ["--tls=false"]
+  before_script:
+    # the variables are defined in GitLab Variables 
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - echo "Pushing to docker hub"
+    # the dockerfile is located in the folder 
+    - cd conint.server
+    # the variables are defined in GitLab Variables
+    - docker build -t "$CI_REGISTRY_IMAGE" .
+    - docker push "$CI_REGISTRY_IMAGE"
+    - echo "Application successfully deployed."
+  only:
+    # this stage is only executed when pushing to master branch 
+    - master

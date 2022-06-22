@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/dotnet/sdk:5.0 AS build-env
+
+WORKDIR ./app
+
+COPY .  .
+
+EXPOSE 1300
+
+ENTRYPOINT ["dotnet", "run"]
+
+#Docker run  --rm -p  1300:1300 mhaleesi/conint.backend:latest (to run on port)
